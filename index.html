@@ -1,0 +1,148 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pirate Ship Navigator</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a0033 0%, #2d004d 100%);
+            font-family: Arial, sans-serif;
+        }
+        
+        #start-screen {
+            text-align: center;
+            color: #FFD700;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 10px;
+            max-width: 600px;
+        }
+        
+        #start-button {
+            background: #FFD700;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        
+        #start-button:hover {
+            background: #FFA500;
+        }
+        
+        #game-container {
+            position: relative;
+            display: none;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #FFD700;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 100;
+            min-width: 200px;
+        }
+        
+        .stat {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #FFD700;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        
+        .key {
+            background: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin: 0 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <h1>🏴‍☠️ Pirate Ship Navigator</h1>
+        <p>Navigate your pirate ship, collect treasure, battle enemies, and defeat bosses!</p>
+        <button id="start-button">Start Game</button>
+    </div>
+    
+    <div id="game-container"></div>
+    
+    <div id="info-panel">
+        <div class="stat">🏴‍☠️ Pirate Navigator</div>
+        <div class="stat">Treasure: <span id="treasure">0</span></div>
+        <div class="stat">Health: <span id="health">100</span></div>
+        <div class="stat">Boss Health: <span id="boss-health">N/A</span></div>
+        <div class="stat">Level: <span id="level">1</span></div>
+        <div class="stat" id="powerup-status" style="color: #FF6B9D; margin-top: 10px;"></div>
+    </div>
+    
+    <div id="controls">
+        <div><span class="key">WASD</span> - Move Ship | <span class="key">↑↓←→</span> - Aim</div>
+        <div><span class="key">SPACE</span> - Shoot (Hold to Charge)</div>
+        <div style="margin-top: 8px; font-size: 11px; color: #AAAAAA;">
+            Collect 🏆 Treasure | Avoid 👹 Enemies | Defeat 🔴 Boss
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: #FFB366;">
+            Power-ups: 💚 Health | 🔥 Rapid Fire
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script>
+        function showErrorOverlay(message) {
+            const overlay = document.getElementById('error-overlay') || document.createElement('div');
+            overlay.id = 'error-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.left = '0';
+            overlay.style.top = '0';
+            overlay.style.width = '100%';
+            overlay.style.background = 'rgba(255,0,0,0.9)';
+            overlay.style.color = '#fff';
+            overlay.style.zIndex = 9999;
+            overlay.style.padding = '10px';
+            overlay.style.fontSize = '14px';
+            overlay.style.whiteSpace = 'pre-wrap';
+            overlay.textContent = message;
+            document.body.appendChild(overlay);
+        }
+
+        document.getElementById('start-button').addEventListener('click', function() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            startGame();
+        });
+    </script>
+</body>
+</html>
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js" crossorigin="anonymous"></script>
+    <script src="game.js"></script>
+</body>
+</html>
