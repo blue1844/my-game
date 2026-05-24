@@ -2,6 +2,9 @@ function preload() {
     // No assets to load for this game
 }
 
+const MAP_WIDTH = 2400;
+const MAP_HEIGHT = 1800;
+
 const config = {
     type: Phaser.AUTO,
     width: 800,
@@ -79,31 +82,40 @@ function create() {
         gameState.bossHealthUI = document.getElementById('boss-health');
 
         createStage = 'background';
-        this.add.rectangle(400, 300, 800, 600, 0x1a5f7a);
+        this.add.rectangle(MAP_WIDTH / 2, MAP_HEIGHT / 2, MAP_WIDTH, MAP_HEIGHT, 0x1a5f7a);
 
-        // Create decorative water pattern
-        for (let i = 0; i < 10; i++) {
-            for (let j = 0; j < 8; j++) {
+        // Create decorative water pattern across the larger world
+        for (let i = 0; i < MAP_WIDTH / 80; i++) {
+            for (let j = 0; j < MAP_HEIGHT / 75; j++) {
                 this.add.circle(i * 80, j * 75, 3, 0x0d3f4f).setAlpha(0.3);
             }
         }
-    
-    // Create decorative water pattern
-    for (let i = 0; i < 10; i++) {
-        for (let j = 0; j < 8; j++) {
-            this.add.circle(i * 80, j * 75, 3, 0x0d3f4f).setAlpha(0.3);
-        }
-    }
 
-    // Create player ship (triangle)
-    gameState.playerShip = this.add.triangle(100, 300, 0, -15, -12, 20, 12, 20, 0x8B4513);
-    gameState.playerShip.setScale(2);
+        this.physics.world.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
+        this.cameras.main.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
+
+    // Create player ship with pirate styling
+    gameState.playerShip = createPirateShip(this, 100, 300);
+    gameState.playerShip.setScale(1.4);
     this.physics.world.enable(gameState.playerShip);
     gameState.playerShip.body.setCollideWorldBounds(true);
     gameState.playerShip.body.setBounce(0.2);
     gameState.playerShip.body.setMaxVelocity(300, 300);
+    gameState.playerShip.body.setSize(80, 60);
+    gameState.playerShip.body.setOffset(-40, -30);
     gameState.playerShip.rotation = 0;
     gameState.playerShip.health = 100;
+    this.cameras.main.startFollow(gameState.playerShip, true, 0.08, 0.08);
+
+    gameState.wakeTrail = this.add.group();
+    gameState.wakeTimer = 0;
+    gameState.hintText = this.add.text(400, 570, '', {
+        fontSize: '14px',
+        fill: '#FFFFFF',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        padding: { x: 8, y: 6 }
+    }).setScrollFactor(0).setOrigin(0.5);
+    gameState.islandCenters = [];
 
     // Create sprite groups
     gameState.treasures = this.physics.add.group();
@@ -111,6 +123,7 @@ function create() {
     gameState.enemies = this.physics.add.group();
     gameState.cannonballs = this.physics.add.group();
     gameState.bossGroup = this.physics.add.group();
+    gameState.islands = this.add.group();
 
     gameState.pauseText = this.add.text(400, 300, 'PAUSED', {
         fontSize: '36px',
@@ -119,7 +132,10 @@ function create() {
         padding: { x: 10, y: 8 }
     }).setOrigin(0.5).setDepth(1000).setVisible(false);
 
-    // Spawn initial treasures
+    // Create islands and island treasure
+    createIslands(this);
+
+    // Spawn additional random treasures across the map
     for (let i = 0; i < 5; i++) {
         spawnTreasure(this);
     }
@@ -136,7 +152,10 @@ function create() {
     // Input callbacks
     this.input.keyboard.on('keydown-SPACE', () => {
         if (gameState.isMouseCharging && gameState.chargeLevel > 0) {
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, this.input.activePointer.x, this.input.activePointer.y);
+            let pointer = this.input.activePointer;
+            let worldX = pointer.worldX !== undefined ? pointer.worldX : this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+            let worldY = pointer.worldY !== undefined ? pointer.worldY : this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldX, worldY);
             fireCannon(this);
             gameState.chargeLevel = 0;
             gameState.isMouseCharging = false;
@@ -148,8 +167,11 @@ function create() {
     });
     
     this.input.keyboard.on('keyup-SPACE', () => {
-        if (gameState.isCharging && gameState.chargeLevel > 0) {
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, this.input.activePointer.x, this.input.activePointer.y);
+        if (gameState.isCharging || gameState.isMouseCharging) {
+            let pointer = this.input.activePointer;
+            let worldX = pointer.worldX !== undefined ? pointer.worldX : this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+            let worldY = pointer.worldY !== undefined ? pointer.worldY : this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldX, worldY);
             fireCannon(this);
         }
         gameState.isCharging = false;
@@ -188,7 +210,9 @@ function create() {
         if (pointer.leftButtonDown()) {
             gameState.isMouseCharging = true;
             gameState.chargeLevel = 0;
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, pointer.x, pointer.y);
+            let worldX = pointer.worldX !== undefined ? pointer.worldX : this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+            let worldY = pointer.worldY !== undefined ? pointer.worldY : this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldX, worldY);
         }
     });
 
@@ -200,13 +224,17 @@ function create() {
 
     this.input.on('pointermove', pointer => {
         if (gameState.playerShip && gameState.playerShip.active) {
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, pointer.x, pointer.y);
+            let worldX = pointer.worldX !== undefined ? pointer.worldX : this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+            let worldY = pointer.worldY !== undefined ? pointer.worldY : this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldX, worldY);
         }
     });
 
     this.input.on('pointerdown', pointer => {
         if (gameState.playerShip && gameState.playerShip.active) {
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, pointer.x, pointer.y);
+            let worldX = pointer.worldX !== undefined ? pointer.worldX : this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+            let worldY = pointer.worldY !== undefined ? pointer.worldY : this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldX, worldY);
             fireCannon(this);
         }
     });
@@ -332,8 +360,9 @@ function update() {
     // Mouse aim is always active (prefers pixel-accurate mouse target)
     if (gameState.scene.input.activePointer && gameState.playerShip.active) {
         let pointer = gameState.scene.input.activePointer;
-        if (pointer.x !== undefined && pointer.y !== undefined) {
-            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, pointer.x, pointer.y);
+        let worldPoint = gameState.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        if (worldPoint.x !== undefined && worldPoint.y !== undefined) {
+            gameState.shipRotation = Phaser.Math.Angle.Between(gameState.playerShip.x, gameState.playerShip.y, worldPoint.x, worldPoint.y);
         }
     }
 
@@ -383,7 +412,7 @@ function update() {
             enemy.rotation = angle;
             enemy.body.setVelocity(Math.cos(angle) * 100, Math.sin(angle) * 100);
 
-            if (enemy.x < -50 || enemy.x > 850 || enemy.y < -50 || enemy.y > 650) {
+            if (enemy.x < -50 || enemy.x > MAP_WIDTH + 50 || enemy.y < -50 || enemy.y > MAP_HEIGHT + 50) {
                 enemy.destroy();
             }
         }
@@ -398,7 +427,7 @@ function update() {
             ball.body.setVelocity(ball.vx, ball.vy);
         }
 
-        if (ball.x < -200 || ball.x > 1000 || ball.y < -200 || ball.y > 800) {
+        if (ball.x < -200 || ball.x > MAP_WIDTH + 200 || ball.y < -200 || ball.y > MAP_HEIGHT + 200) {
             ball.destroy();
         }
     });
@@ -413,9 +442,20 @@ function update() {
         spawnPowerup(gameState.scene);
     }
 
-    // Boss spawning (only after level 3 and score 150+, waits 10 seconds)
+    // Ship wake trail
+    if (gameState.playerShip && gameState.playerShip.active) {
+        let velocity = gameState.playerShip.body ? gameState.playerShip.body.velocity : { x: 0, y: 0 };
+        if (Math.abs(velocity.x) > 20 || Math.abs(velocity.y) > 20) {
+            gameState.wakeTimer++;
+            if (gameState.wakeTimer % 8 === 0) {
+                createWakePulse(gameState.scene);
+            }
+        }
+    }
+
+    // Boss spawning (only after level 4 and score 250+, waits 10 seconds)
     gameState.bossSpawnTimer++;
-    if (!gameState.boss && gameState.level >= 3 && gameState.score >= 150 && gameState.bossSpawnTimer > 600) {
+    if (!gameState.boss && gameState.level >= 4 && gameState.score >= 250 && gameState.bossSpawnTimer > 600) {
         spawnBoss(gameState.scene);
         gameState.bossSpawnTimer = 0;
     }
@@ -433,7 +473,13 @@ function update() {
             gameState.boss.fireCounter = 80;
         }
 
-        if (gameState.boss.x < -50 || gameState.boss.x > 850 || gameState.boss.y < -50 || gameState.boss.y > 650) {
+        if (gameState.boss.isKraken && gameState.boss.tentacles) {
+            gameState.boss.tentacles.forEach((tentacle, index) => {
+                tentacle.rotation = Math.sin((gameState.scene.time.now / 300) + index * 0.8) * 0.35;
+            });
+        }
+
+        if (gameState.boss.x < -50 || gameState.boss.x > MAP_WIDTH + 50 || gameState.boss.y < -50 || gameState.boss.y > MAP_HEIGHT + 50) {
             gameState.boss.destroy();
             gameState.boss = null;
         }
@@ -453,20 +499,135 @@ function update() {
     if (gameState.chargeLevel > 0) powerupText += `⚡ ${Math.floor(gameState.chargeLevel)}%`;
     gameState.powerupUI.textContent = powerupText;
 
+    updateTreasureHint();
+
     // Game over
     if (gameState.playerShip.health <= 0) {
         gameState.scene.physics.pause();
-        alert(`Game Over!\nScore: ${gameState.score}\nLevel: ${gameState.level}`);
-        gameState.scene.scene.restart();
+        if (!gameState.gameOverText) {
+            gameState.gameOverText = gameState.scene.add.text(400, 300, `Game Over\nScore: ${gameState.score}\nLevel: ${gameState.level}`, {
+                fontSize: '24px',
+                fill: '#ff4444',
+                backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                padding: { x: 12, y: 10 }
+            }).setOrigin(0.5).setDepth(1000).setScrollFactor(0);
+        }
+        gameState.playerShip.setActive(false);
+        gameState.scene.time.delayedCall(1200, () => {
+            gameState.scene.scene.restart();
+        });
+        return;
     }
 }
 
 function spawnTreasure(scene) {
-    let x = Phaser.Math.Between(50, 750);
-    let y = Phaser.Math.Between(50, 550);
+    let x = Phaser.Math.Between(50, MAP_WIDTH - 50);
+    let y = Phaser.Math.Between(50, MAP_HEIGHT - 50);
     let treasure = scene.add.star(x, y, 5, 8, 15, 0xFFD700);
     scene.physics.world.enable(treasure);
     gameState.treasures.add(treasure);
+}
+
+function createIslands(scene) {
+    let islandPositions = [
+        { x: 400, y: 400, size: 90 },
+        { x: 1200, y: 300, size: 110 },
+        { x: 1900, y: 500, size: 80 },
+        { x: 700, y: 1300, size: 100 },
+        { x: 1600, y: 1400, size: 120 }
+    ];
+
+    islandPositions.forEach(data => {
+        createIsland(scene, data.x, data.y, data.size);
+    });
+}
+
+function createIsland(scene, x, y, radius) {
+    let sand = scene.add.ellipse(x, y + 10, radius * 2.2, radius * 1.1, 0xDEB887).setAlpha(0.75);
+    let island = scene.add.circle(x, y, radius, 0x8B5A2B).setStrokeStyle(4, 0xC19A6B);
+    let grass = scene.add.circle(x, y - radius * 0.25, radius * 0.45, 0x2E8B57).setAlpha(0.9);
+    gameState.islands.add(sand);
+    gameState.islands.add(island);
+    gameState.islands.add(grass);
+    gameState.islandCenters.push({ x, y });
+
+    // Add palm trees on the island
+    createPalmTree(scene, x - radius * 0.4, y - radius * 0.3);
+    createPalmTree(scene, x + radius * 0.35, y - radius * 0.45);
+
+    // Place a few gold treasures on the island
+    let pieces = Phaser.Math.Between(2, 4);
+    for (let i = 0; i < pieces; i++) {
+        let angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        let dist = Phaser.Math.Between(20, radius - 30);
+        let tx = x + Math.cos(angle) * dist;
+        let ty = y + Math.sin(angle) * dist;
+        let treasure = scene.add.star(tx, ty, 5, 8, 15, 0xFFD700);
+        scene.physics.world.enable(treasure);
+        gameState.treasures.add(treasure);
+    }
+}
+
+function createPalmTree(scene, x, y) {
+    let trunk = scene.add.rectangle(x, y + 12, 10, 40, 0x8B4513).setOrigin(0.5, 0);
+    let leaves = scene.add.circle(x, y - 8, 22, 0x228B22).setAlpha(0.95);
+    let leaves2 = scene.add.circle(x - 14, y + 6, 16, 0x228B22).setAlpha(0.95);
+    let leaves3 = scene.add.circle(x + 14, y + 6, 16, 0x228B22).setAlpha(0.95);
+    scene.add.circle(x, y + 20, 8, 0xDEB887).setAlpha(0.8);
+}
+
+function createWakePulse(scene) {
+    if (!gameState.playerShip || !gameState.playerShip.active) return;
+    let angle = gameState.shipRotation + Math.PI;
+    let x = gameState.playerShip.x + Math.cos(angle) * 30;
+    let y = gameState.playerShip.y + Math.sin(angle) * 30;
+    let bubble = scene.add.circle(x, y, 6, 0xCFE8FF, 0.5);
+    gameState.wakeTrail.add(bubble);
+    scene.tweens.add({
+        targets: bubble,
+        alpha: 0,
+        scale: 0.2,
+        duration: 500,
+        ease: 'Quad.easeOut',
+        onComplete: () => bubble.destroy()
+    });
+}
+
+function updateTreasureHint() {
+    if (!gameState.hintText || !gameState.playerShip) return;
+    let nearest = null;
+    let nearestDist = Number.MAX_VALUE;
+    gameState.islandCenters.forEach(item => {
+        let d = Phaser.Math.Distance.Between(gameState.playerShip.x, gameState.playerShip.y, item.x, item.y);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearest = item;
+        }
+    });
+
+    if (nearest && nearestDist < 900) {
+        let distanceText = Math.round(nearestDist);
+        let alertText = nearestDist < 180 ? ' - treasure island close!' : '';
+        gameState.hintText.text = `Nearest island: ${distanceText}m${alertText}`;
+    } else {
+        gameState.hintText.text = 'Explore the map to find island treasure!';
+    }
+}
+
+function createPirateShip(scene, x, y) {
+    let ship = scene.add.container(x, y);
+
+    let hull = scene.add.polygon(0, 12, [ -36, 0, 36, 0, 24, 18, -24, 18 ], 0x8B4513).setStrokeStyle(2, 0x5C3317);
+    let deck = scene.add.rectangle(0, 1, 60, 12, 0xA0522D).setOrigin(0.5, 0.5);
+    let mast = scene.add.rectangle(0, -4, 8, 60, 0x4B3621).setOrigin(0.5, 1);
+    let sail = scene.add.triangle(10, -28, 0, -12, 0, -52, 36, -30, 0xFFFFFF).setStrokeStyle(2, 0x999999).setAlpha(0.95);
+    let flag = scene.add.triangle(24, -50, 0, -50, 0, -42, 24, -46, 0xFF0000);
+    let cross = scene.add.line(-6, -40, -10, -6, 10, -6, 0x000000).setLineWidth(2).setOrigin(0.5, 0.5);
+
+    ship.add([hull, deck, mast, sail, flag, cross]);
+    ship.setSize(72, 64);
+
+    return ship;
 }
 
 function spawnEnemy(scene) {
@@ -475,17 +636,17 @@ function spawnEnemy(scene) {
     let x, y;
 
     if (side === 'top') {
-        x = Phaser.Math.Between(50, 750);
+        x = Phaser.Math.Between(50, MAP_WIDTH - 50);
         y = -20;
     } else if (side === 'bottom') {
-        x = Phaser.Math.Between(50, 750);
-        y = 620;
+        x = Phaser.Math.Between(50, MAP_WIDTH - 50);
+        y = MAP_HEIGHT + 20;
     } else if (side === 'left') {
         x = -20;
-        y = Phaser.Math.Between(50, 550);
+        y = Phaser.Math.Between(50, MAP_HEIGHT - 50);
     } else {
-        x = 820;
-        y = Phaser.Math.Between(50, 550);
+        x = MAP_WIDTH + 20;
+        y = Phaser.Math.Between(50, MAP_HEIGHT - 50);
     }
 
     let enemy = scene.add.circle(x, y, 12, 0xFF6B6B);
@@ -497,8 +658,8 @@ function spawnEnemy(scene) {
 }
 
 function spawnPowerup(scene) {
-    let x = Phaser.Math.Between(50, 750);
-    let y = Phaser.Math.Between(50, 550);
+    let x = Phaser.Math.Between(50, MAP_WIDTH - 50);
+    let y = Phaser.Math.Between(50, MAP_HEIGHT - 50);
     let type = Phaser.Math.RND.pick(['health', 'rapid']);
     
     let colors = { health: 0x00FF00, rapid: 0xFFAA00 };
@@ -526,45 +687,56 @@ function collectPowerup(player, powerup, scene) {
     }
 }
 
-function spawnBoss(scene) {
-    let x = Phaser.Math.Between(200, 600);
-    let y = Phaser.Math.Between(100, 500);
-    
-    gameState.boss = scene.add.circle(x, y, 25, 0xFF1111);
-    scene.physics.world.enable(gameState.boss);
-    gameState.boss.body.setCollideWorldBounds(true);
-    gameState.boss.body.setBounce(0.5);
-    gameState.boss.setScale(1.5);
-    gameState.boss.health = 300; // boss health, takes multiple hits
-    gameState.boss.fireCounter = 80;
+function createKuttyKraken(scene, x, y) {
+    let boss = scene.add.container(x, y);
+    let body = scene.add.circle(0, 0, 40, 0x3B0B0B).setStrokeStyle(4, 0x631414);
+    let eyeLeft = scene.add.circle(-14, -10, 7, 0xFFFFFF);
+    let eyeRight = scene.add.circle(14, -10, 7, 0xFFFFFF);
+    let pupilLeft = scene.add.circle(-14, -10, 3, 0x000000);
+    let pupilRight = scene.add.circle(14, -10, 3, 0x000000);
+    let tentacles = [];
+    let offsets = [ -32, -18, 0, 18, 32 ];
+    offsets.forEach((offset, index) => {
+        let t = scene.add.polygon(offset, 40, [0, 0, -10, 40, 10, 40], 0x5B1E1E).setAlpha(0.95);
+        tentacles.push(t);
+    });
+    boss.add([body, eyeLeft, eyeRight, pupilLeft, pupilRight, ...tentacles]);
+    scene.physics.world.enable(boss);
+    boss.body.setCircle(40);
+    boss.body.setOffset(-40, -40);
+    boss.body.setCollideWorldBounds(true);
+    boss.body.setBounce(0.5);
+    boss.isKraken = true;
+    boss.tentacles = tentacles;
+    return boss;
+}
 
+function spawnBoss(scene) {
+    let x = Phaser.Math.Between(200, MAP_WIDTH - 200);
+    let y = Phaser.Math.Between(150, MAP_HEIGHT - 150);
+    gameState.boss = createKuttyKraken(scene, x, y);
+    gameState.boss.health = 450;
+    gameState.boss.fireCounter = 80;
     gameState.bossGroup.add(gameState.boss);
 }
 
-function createCannonball(scene, spawnX, spawnY, radius, angle, speed, color = 0xFFFF00) {
-    let cannonball = scene.add.circle(spawnX, spawnY, radius, color);
-    scene.physics.add.existing(cannonball);
-
+function createCannonball(scene, x, y, radius, angle, speed, damage = 25) {
+    let cannonball = scene.add.circle(x, y, radius, 0xFFFFFF);
+    scene.physics.world.enable(cannonball);
     cannonball.body.setCircle(radius);
-    cannonball.body.setCollideWorldBounds(false);
     cannonball.body.setAllowGravity(false);
+    cannonball.body.setCollideWorldBounds(false);
+    cannonball.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     cannonball.body.setDrag(0, 0);
-    cannonball.body.setMaxVelocity(speed, speed);
-
-    let vx = Math.cos(angle) * speed;
-    let vy = Math.sin(angle) * speed;
-    cannonball.body.setVelocity(vx, vy);
-    cannonball.body.setBounce(0);
-
-    cannonball.vx = vx;
-    cannonball.vy = vy;
-    cannonball.damage = 25;
-
+    cannonball.vx = Math.cos(angle) * speed;
+    cannonball.vy = Math.sin(angle) * speed;
+    cannonball.damage = damage;
     return cannonball;
 }
 
 function fireCannonInternal(scene) {
     let angle = gameState.shipRotation;
+    if (!Number.isFinite(angle)) angle = 0;
     let speed = 1000;
     
     // Spawn position
@@ -580,6 +752,7 @@ function fireCannon(scene) {
     if (gameState.cannonCooldown > 0 && !gameState.rapidFireActive) return;
     
     let angle = gameState.shipRotation;
+    if (!Number.isFinite(angle)) angle = 0;
     let speed = 1000 + (gameState.chargeLevel / gameState.maxCharge) * 400;
     let size = 5 + (gameState.chargeLevel / gameState.maxCharge) * 6;
     
@@ -600,17 +773,19 @@ function fireCannon(scene) {
 function fireBossCannonball(scene) {
     if (!gameState.boss || !gameState.boss.active) return;
     
-    let angle = Phaser.Math.Angle.Between(gameState.boss.x, gameState.boss.y, gameState.playerShip.x, gameState.playerShip.y);
-    let spawnX = gameState.boss.x + Math.cos(angle) * 30;
-    let spawnY = gameState.boss.y + Math.sin(angle) * 30;
-    
-    let bossBall = scene.add.circle(spawnX, spawnY, 6, 0xFF6666);
-    scene.physics.world.enable(bossBall);
-    
-    let speed = 400;
-    let vx = Math.cos(angle) * speed;
-    let vy = Math.sin(angle) * speed;
-    bossBall.body.setVelocity(vx, vy);
-    
-    gameState.cannonballs.add(bossBall);
+    let centerAngle = Phaser.Math.Angle.Between(gameState.boss.x, gameState.boss.y, gameState.playerShip.x, gameState.playerShip.y);
+    let spread = 0.25;
+    let speed = 380;
+
+    for (let i = -1; i <= 1; i++) {
+        let angle = centerAngle + i * spread;
+        let spawnX = gameState.boss.x + Math.cos(angle) * 40;
+        let spawnY = gameState.boss.y + Math.sin(angle) * 40;
+        let bossBall = scene.add.circle(spawnX, spawnY, 6, 0xFF6666);
+        scene.physics.world.enable(bossBall);
+        let vx = Math.cos(angle) * speed;
+        let vy = Math.sin(angle) * speed;
+        bossBall.body.setVelocity(vx, vy);
+        gameState.cannonballs.add(bossBall);
+    }
 }
